@@ -554,7 +554,7 @@
         </header>
 
         <div class="csv-upload-section">
-            <h3 style="margin-bottom: 15px; color: #333;">📁 Update Price List</h3>
+            <h3 style="margin-bottom: 15px; color: #333;">📁 Price List</h3>
             <div class="upload-container">
                 <div class="file-input-wrapper">
                     <label class="file-input-label">
@@ -567,7 +567,7 @@
             <div id="errorMessage" class="error-message"></div>
             <div id="successMessage" class="success-message"></div>
             <div class="upload-info" style="margin-top: 12px;">
-                💡 Upload a CSV file (rptpricelist format) to update all prices
+                💡 Preview an uploaded price list on this device only. To update prices for everyone, replace rptpricelist.csv on the host.
             </div>
         </div>
 
@@ -597,46 +597,57 @@
             <div class="stats" id="statsBar"></div>
             <div class="price-list-info" id="priceListInfo" style="display: none;">
                 <span id="priceListDate"></span>
-                <button class="reset-btn" id="resetBtn">Reset to Default</button>
+                <button class="reset-btn" id="resetBtn">Back to live prices</button>
             </div>
         </div>
     </div>
 
     <script>
         // ==================== DATA MANAGEMENT ====================
-        const DEFAULT_DATA = [{"name": "444 POWDER 50G", "price": 100}, {"name": "500G SOFT N FREE GEL", "price": 520}, {"name": "A.P.C TABS 100`S", "price": 3}, {"name": "A.P.C tabs 500s", "price": 1}, {"name": "Abidec Drops 25ml", "price": 1986}, {"name": "ABZ (Albendazole)  400mg Tabs 1s", "price": 100}, {"name": "ABZ (Albendazole) Susp. 10ml", "price": 100}, {"name": "Accu - Check strips 50s ACTIVE", "price": 30}, {"name": "ACE 125MG 10`S", "price": 0}, {"name": "ACE FORTE 10`S", "price": 0}, {"name": "ACE FORTE 100`S", "price": 0}, {"name": "ACE SYRUP 100ML", "price": 0}, {"name": "ACE TAB 10S", "price": 0}, {"name": "ACE TABS 100S", "price": 0}, {"name": "Acemetacin 60mg Inj.", "price": 0}, {"name": "Acemetacin 60mg tabs 10s", "price": 0}, {"name": "Acenorm 100mg Tab 10s", "price": 0}, {"name": "Acenorm Syrup 100ml", "price": 0}, {"name": "Acepril 12.5mg 10s", "price": 0}, {"name": "Acetaminophen (Paracetamol) 500mg tab 10s", "price": 0}];
-        
-        let drugsData = [...DEFAULT_DATA];
-        let currentSort = 'name';
-        let filteredData = [...drugsData];
-        let currentPriceListDate = null;
-        let currentPriceListSource = 'default';
+        // Live prices come from rptpricelist.csv, which sits next to this page on the host.
+        // To update prices for every visitor, replace that file on the host.
+        const LIVE_CSV_URL = 'rptpricelist.csv';
 
-        // Load from localStorage
-        function loadFromStorage() {
-            const stored = localStorage.getItem('drugsData');
-            const storedDate = localStorage.getItem('priceListDate');
-            const storedSource = localStorage.getItem('priceListSource');
-            
-            if (stored) {
-                try {
-                    drugsData = JSON.parse(stored);
-                    filteredData = [...drugsData];
-                    currentPriceListDate = storedDate;
-                    currentPriceListSource = storedSource || 'uploaded';
-                    updatePriceListInfo();
-                    console.log('Loaded data from localStorage');
-                } catch (e) {
-                    console.error('Error loading from storage:', e);
-                }
+        let drugsData = [];
+        let currentSort = 'name';
+        let filteredData = [];
+        let currentPriceListSource = 'loading'; // 'loading' | 'live' | 'preview' | 'error'
+        let currentPriceListDate = null;
+
+        async function loadLivePrices() {
+            currentPriceListSource = 'loading';
+            updatePriceListInfo();
+            resultsList.innerHTML = '<div class="empty-state"><div class="empty-state-text">Loading prices…</div></div>';
+
+            try {
+                const res = await fetch(LIVE_CSV_URL + '?v=' + Date.now(), { cache: 'no-store' });
+                if (!res.ok) throw new Error('HTTP ' + res.status);
+
+                const parsed = parseRptPricelistCSV(await res.text());
+                if (parsed.length === 0) throw new Error('no drugs found in the price list');
+
+                drugsData = parsed;
+                currentPriceListSource = 'live';
+                const lastModified = res.headers.get('Last-Modified');
+                currentPriceListDate = lastModified ? new Date(lastModified).toLocaleString() : null;
+            } catch (err) {
+                console.error('Could not load live prices:', err);
+                drugsData = [];
+                currentPriceListSource = 'error';
             }
+
+            applyFilters();
+            updatePriceListInfo();
         }
 
-        // Save to localStorage
-        function saveToStorage() {
-            localStorage.setItem('drugsData', JSON.stringify(drugsData));
-            localStorage.setItem('priceListDate', currentPriceListDate);
-            localStorage.setItem('priceListSource', currentPriceListSource);
+        function applyFilters() {
+            const query = searchInput.value.toLowerCase().trim();
+            filteredData = query
+                ? drugsData.filter(drug => drug.name.toLowerCase().includes(query))
+                : [...drugsData];
+            clearNotice.style.display = query ? 'inline' : 'none';
+            sortData();
+            displayResults(filteredData);
         }
 
         // ==================== CSV PARSING ====================
@@ -747,9 +758,8 @@
                     drugsData = parsedDrugs;
                     filteredData = [...drugsData];
                     currentPriceListDate = new Date().toLocaleDateString();
-                    currentPriceListSource = 'uploaded';
+                    currentPriceListSource = 'preview';
                     
-                    saveToStorage();
                     updatePriceListInfo();
                     displayResults(filteredData);
 
@@ -813,35 +823,24 @@
         }
 
         function resetToDefault() {
-            if (confirm('Reset to default price list?')) {
-                drugsData = [...DEFAULT_DATA];
-                filteredData = [...drugsData];
-                currentPriceListDate = null;
-                currentPriceListSource = 'default';
-                localStorage.removeItem('drugsData');
-                localStorage.removeItem('priceListDate');
-                localStorage.removeItem('priceListSource');
-                
-                csvFileInput.value = '';
-                fileNameDisplay.textContent = 'No file selected';
-                updatePriceListInfo();
-                displayResults(filteredData);
-                searchInput.value = '';
-                searchInput.focus();
-                
-                successMessage.textContent = '✓ Reset to default price list';
-                successMessage.style.display = 'block';
-                setTimeout(() => { successMessage.style.display = 'none'; }, 3000);
-            }
+            csvFileInput.value = '';
+            fileNameDisplay.textContent = 'No file selected';
+            loadLivePrices();
+            successMessage.textContent = '✓ Showing the latest live prices';
+            successMessage.style.display = 'block';
+            setTimeout(() => { successMessage.style.display = 'none'; }, 3000);
         }
 
         function updatePriceListInfo() {
-            if (currentPriceListSource === 'default') {
-                priceListInfo.style.display = 'none';
-            } else {
-                priceListDate.textContent = `📅 Price list loaded: ${currentPriceListDate}`;
-                priceListInfo.style.display = 'flex';
-            }
+            const messages = {
+                loading: '⏳ Loading the latest price list…',
+                live: '🟢 Live prices' + (currentPriceListDate ? ' · last updated ' + currentPriceListDate : ''),
+                preview: '👁 Previewing an uploaded file on this device only',
+                error: '⚠️ Could not load the latest price list. Check your connection and refresh the page.'
+            };
+            priceListDate.textContent = messages[currentPriceListSource] || '';
+            priceListInfo.style.display = 'flex';
+            resetBtn.style.display = currentPriceListSource === 'preview' ? 'inline-block' : 'none';
         }
 
         function sortData() {
@@ -897,9 +896,7 @@
         }
 
         // Initialize
-        loadFromStorage();
-        displayResults(drugsData);
-        updatePriceListInfo();
+        loadLivePrices();
         searchInput.focus();
     </script>
 </body>

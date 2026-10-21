@@ -553,24 +553,6 @@
             <p class="subtitle">Find medication prices instantly</p>
         </header>
 
-<!--         <div class="csv-upload-section">
-            <h3 style="margin-bottom: 15px; color: #333;">📁 Price List</h3>
-            <div class="upload-container">
-                <div class="file-input-wrapper">
-                    <label class="file-input-label">
-                        <span>📤 Upload CSV</span>
-                        <input type="file" id="csvFile" accept=".csv" />
-                    </label>
-                </div>
-                <div class="file-name" id="fileName">No file selected</div>
-            </div>
-            <div id="errorMessage" class="error-message"></div>
-            <div id="successMessage" class="success-message"></div>
-            <div class="upload-info" style="margin-top: 12px;">
-                💡 Preview an uploaded price list on this device only. To update prices for everyone, replace rptpricelist.csv on the host.
-            </div>
-        </div> -->
-
         <div class="search-section">
             <div class="search-input-wrapper">
                 <input 
@@ -597,21 +579,20 @@
             <div class="stats" id="statsBar"></div>
             <div class="price-list-info" id="priceListInfo" style="display: none;">
                 <span id="priceListDate"></span>
-                <button class="reset-btn" id="resetBtn">Back to live prices</button>
             </div>
         </div>
     </div>
 
     <script>
         // ==================== DATA MANAGEMENT ====================
-        // Live prices come from rptpricelist.csv, which sits next to this page on the host.
-        // To update prices for every visitor, replace that file on the host.
+        // Live prices are read from rptpricelist.csv in the same GitHub repository as this page.
+        // To update prices, replace that file in the repository.
         const LIVE_CSV_URL = 'rptpricelist.csv';
 
         let drugsData = [];
         let currentSort = 'name';
         let filteredData = [];
-        let currentPriceListSource = 'loading'; // 'loading' | 'live' | 'preview' | 'error'
+        let currentPriceListSource = 'loading'; // 'loading' | 'live' | 'error'
         let currentPriceListDate = null;
 
         async function loadLivePrices() {
@@ -714,10 +695,6 @@
         }
 
         // ==================== UI ELEMENTS ====================
-        const csvFileInput = document.getElementById('csvFile');
-        const fileNameDisplay = document.getElementById('fileName');
-        const errorMessage = document.getElementById('errorMessage');
-        const successMessage = document.getElementById('successMessage');
         const searchInput = document.getElementById('searchInput');
         const resultsList = document.getElementById('resultsList');
         const resultCount = document.getElementById('resultCount');
@@ -726,67 +703,11 @@
         const sortBtns = document.querySelectorAll('.sort-btn');
         const priceListInfo = document.getElementById('priceListInfo');
         const priceListDate = document.getElementById('priceListDate');
-        const resetBtn = document.getElementById('resetBtn');
 
         // ==================== EVENT LISTENERS ====================
-        csvFileInput.addEventListener('change', handleFileUpload);
         searchInput.addEventListener('input', handleSearch);
         sortBtns.forEach(btn => btn.addEventListener('click', handleSort));
         clearNotice.addEventListener('click', clearSearch);
-        resetBtn.addEventListener('click', resetToDefault);
-
-        function handleFileUpload(e) {
-            errorMessage.style.display = 'none';
-            successMessage.style.display = 'none';
-
-            const file = e.target.files[0];
-            if (!file) return;
-
-            fileNameDisplay.textContent = file.name;
-            fileNameDisplay.innerHTML = `<span class="loading-spinner"></span> Processing...`;
-
-            const reader = new FileReader();
-            reader.onload = (event) => {
-                try {
-                    const csvContent = event.target.result;
-                    const parsedDrugs = parseRptPricelistCSV(csvContent);
-
-                    if (parsedDrugs.length === 0) {
-                        throw new Error('No valid drug data found in CSV');
-                    }
-
-                    drugsData = parsedDrugs;
-                    filteredData = [...drugsData];
-                    currentPriceListDate = new Date().toLocaleDateString();
-                    currentPriceListSource = 'preview';
-                    
-                    updatePriceListInfo();
-                    displayResults(filteredData);
-
-                    fileNameDisplay.textContent = `✓ ${file.name} (${parsedDrugs.length} drugs)`;
-                    
-                    successMessage.textContent = `✓ Successfully loaded ${parsedDrugs.length} drugs from your price list!`;
-                    successMessage.style.display = 'block';
-                    
-                    searchInput.focus();
-                    setTimeout(() => { successMessage.style.display = 'none'; }, 5000);
-
-                } catch (error) {
-                    fileNameDisplay.textContent = 'No file selected';
-                    errorMessage.textContent = `✗ Error: ${error.message}`;
-                    errorMessage.style.display = 'block';
-                    console.error('Upload error:', error);
-                }
-            };
-
-            reader.onerror = () => {
-                fileNameDisplay.textContent = 'No file selected';
-                errorMessage.textContent = '✗ Error reading file';
-                errorMessage.style.display = 'block';
-            };
-
-            reader.readAsText(file);
-        }
 
         function handleSearch(e) {
             const query = e.target.value.toLowerCase().trim();
@@ -822,25 +743,14 @@
             displayResults(filteredData);
         }
 
-        function resetToDefault() {
-            csvFileInput.value = '';
-            fileNameDisplay.textContent = 'No file selected';
-            loadLivePrices();
-            successMessage.textContent = '✓ Showing the latest live prices';
-            successMessage.style.display = 'block';
-            setTimeout(() => { successMessage.style.display = 'none'; }, 3000);
-        }
-
         function updatePriceListInfo() {
             const messages = {
                 loading: '⏳ Loading the latest price list…',
                 live: '🟢 Live prices' + (currentPriceListDate ? ' · last updated ' + currentPriceListDate : ''),
-                preview: '👁 Previewing an uploaded file on this device only',
                 error: '⚠️ Could not load the latest price list. Check your connection and refresh the page.'
             };
             priceListDate.textContent = messages[currentPriceListSource] || '';
             priceListInfo.style.display = 'flex';
-            resetBtn.style.display = currentPriceListSource === 'preview' ? 'inline-block' : 'none';
         }
 
         function sortData() {
